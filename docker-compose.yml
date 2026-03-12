@@ -1,0 +1,22 @@
+services:
+  gemini-draw:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: ai-draw
+    env_file: .env
+    volumes:
+      - .:/app/data
+    working_dir: /app/data
+    entrypoint: ["gemini-draw"]
+
+  or-draw:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: ai-draw
+    env_file: .env
+    volumes:
+      - .:/app/data
+    working_dir: /app/data
+    entrypoint: ["or-draw"]

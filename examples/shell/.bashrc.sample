@@ -1,0 +1,21 @@
+# ai-draw shell integration
+# Add to your ~/.bashrc or ~/.zshrc.
+# Requires: docker compose (v2), .env file in the project root.
+#
+# Usage (run from the project root):
+#   gemini-draw -f prompts.yaml -r ref.png -d output/
+#   or-draw     -f prompts.yaml -d output/
+
+AIDRAW_DIR="/absoluter/pfad/zu/ai-draw"  # <-- adjust this path
+
+gemini-draw() {
+    docker compose -f "$AIDRAW_DIR/docker-compose.yml" \
+        --project-directory "$AIDRAW_DIR" \
+        run --rm gemini-draw "$@"
+}
+
+or-draw() {
+    docker compose -f "$AIDRAW_DIR/docker-compose.yml" \
+        --project-directory "$AIDRAW_DIR" \
+        run --rm or-draw "$@"
+}

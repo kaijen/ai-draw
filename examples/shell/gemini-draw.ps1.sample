@@ -1,0 +1,21 @@
+# ai-draw shell integration for PowerShell
+# Add to your $PROFILE.
+# Requires: docker compose (v2), .env file in the project root.
+#
+# Usage (run from the project root):
+#   gemini-draw -f prompts.yaml -r ref.png -d output/
+#   or-draw     -f prompts.yaml -d output/
+
+$AiDrawDir = "C:\Pfad\zu\ai-draw"  # <-- adjust this path
+
+function gemini-draw {
+    docker compose -f "$AiDrawDir\docker-compose.yml" `
+        --project-directory "$AiDrawDir" `
+        run --rm gemini-draw @args
+}
+
+function or-draw {
+    docker compose -f "$AiDrawDir\docker-compose.yml" `
+        --project-directory "$AiDrawDir" `
+        run --rm or-draw @args
+}
