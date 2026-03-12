@@ -1,19 +1,28 @@
 # Copy to prompts.yaml and adjust to your needs.
-# The 'model' key is only used by or-draw; gemini-draw always uses its built-in Gemini model.
-# The 'prompt' value can be a text string or a path to a .txt file (relative to this YAML file).
+#
+# Keys per image entry:
+#   filename        – output path relative to --output-dir
+#   prompt          – text string or path to a .txt file (relative to this YAML file)
+#   temperature     – optional, overrides --global-temp (default: 0.3)
+#   aspect_ratio    – optional, default "16:9"
+#   resolution      – optional, default "1920x1080" (gemini-draw only)
+#   model           – optional, model ID (or-draw only)
+#   reference_images – optional list of reference images relative to this YAML file
+#                      (gemini-draw only; overrides --global-ref for this image)
 
 images:
   - filename: "gemini/start.png"
-    model: "google/gemini-2.0-flash-001"
     prompt: "Strichmännchen steht am Anfang eines Pfades."
     temperature: 0.1
     aspect_ratio: "16:9"
+    resolution: "1920x1080"
 
-  - filename: "flux/detail.png"
-    model: "black-forest-labs/flux-1-pro"
+  - filename: "gemini/detail.png"
     prompt: "Nahaufnahme des Strichmännchens mit rotem Schal."
+    reference_images:
+      - "ref/style.png"
+      - "ref/pose.png"
 
-  - filename: "riverflow/action.png"
-    model: "riverflow/riverflow-v2-pro"
+  - filename: "or/action.png"
+    model: "black-forest-labs/flux-1-pro"   # or-draw only
     prompt: "descriptions/scene_2.txt"
-    # reference_image: "ref/style.png"   # per-image reference (or-draw only)

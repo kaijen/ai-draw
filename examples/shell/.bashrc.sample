@@ -9,13 +9,11 @@
 AIDRAW_DIR="/absoluter/pfad/zu/ai-draw"  # <-- adjust this path
 
 gemini-draw() {
-    docker compose -f "$AIDRAW_DIR/docker-compose.yml" \
-        --project-directory "$AIDRAW_DIR" \
+    docker compose -f "$AIDRAW_DIR/docker/docker-compose.yml" \
         run --rm gemini-draw "$@"
 }
 
 or-draw() {
-    docker compose -f "$AIDRAW_DIR/docker-compose.yml" \
-        --project-directory "$AIDRAW_DIR" \
+    docker compose -f "$AIDRAW_DIR/docker/docker-compose.yml" \
         run --rm or-draw "$@"
 }

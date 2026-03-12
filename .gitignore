@@ -1,0 +1,27 @@
+# API keys and secrets
+.env
+
+# Generated images
+output/
+
+# Local workspace (experiments, not committed)
+workspace/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# hatch-vcs version file
+src/ai_draw/_version.py
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

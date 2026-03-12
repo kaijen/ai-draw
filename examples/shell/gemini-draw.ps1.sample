@@ -9,13 +9,11 @@
 $AiDrawDir = "C:\Pfad\zu\ai-draw"  # <-- adjust this path
 
 function gemini-draw {
-    docker compose -f "$AiDrawDir\docker-compose.yml" `
-        --project-directory "$AiDrawDir" `
+    docker compose -f "$AiDrawDir\docker\docker-compose.yml" `
         run --rm gemini-draw @args
 }
 
 function or-draw {
-    docker compose -f "$AiDrawDir\docker-compose.yml" `
-        --project-directory "$AiDrawDir" `
+    docker compose -f "$AiDrawDir\docker\docker-compose.yml" `
         run --rm or-draw @args
 }
