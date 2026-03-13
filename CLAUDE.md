@@ -85,11 +85,9 @@ justfile  — recipes: build, push, release, gemini-draw, or-draw
 - Output resolution is fixed by the model (~1360×768 for most Gemini image models)
 - `--aspect-ratio` is a text hint to the model, not an API parameter
 - `--upscale` optionally upscales each generated image via **Replicate Real-ESRGAN** (`nightmareai/real-esrgan`):
-  1. Sends the PNG as a base64 data URI to the Replicate Predictions API (4× scale)
-  2. Polls until the prediction succeeds
-  3. Downloads the upscaled image and resizes it to `--width` × `--height` (default 1920×1080) using Pillow LANCZOS
-  4. Overwrites the original file in-place
-- Per-image `width` / `height` keys in YAML override the CLI defaults when upscaling
+  1. Calls `replicate.Client.run()` with the image file (4× scale); the SDK handles upload and polling
+  2. Resizes the result to the target resolution using Pillow LANCZOS and overwrites the file in-place
+- Target resolution priority (highest wins): YAML `resolution: "WxH"` > YAML `width`/`height` > CLI `--width`/`--height` (default 1920×1080)
 - Requires `REPLICATE_API_KEY` in `.env` (or `--replicate-api-key` flag) when `--upscale` is active
 
 ### or-draw

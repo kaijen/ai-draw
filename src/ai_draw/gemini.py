@@ -1,12 +1,11 @@
 import io
 import os
-import time
 
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(usecwd=True))
 
 import click
-import requests
+import replicate
 import yaml
 from google import genai
 from google.genai import types
@@ -18,50 +17,34 @@ PRICE_PER_IMAGE = 0.003
 
 GEMINI_MODEL = "gemini-2.5-flash-preview-04-17"
 
-REPLICATE_REALESRGAN_URL = "https://api.replicate.com/v1/models/nightmareai/real-esrgan/predictions"
+
+def parse_resolution(resolution_str: str) -> tuple[int, int]:
+    """Parse a 'WxH' resolution string into (width, height)."""
+    parts = resolution_str.lower().split("x")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid resolution format '{resolution_str}', expected 'WxH' (e.g. '1920x1080').")
+    return int(parts[0]), int(parts[1])
+
+
+def resolve_dimensions(item: dict, default_width: int, default_height: int) -> tuple[int, int]:
+    """Return (width, height) for an image item, respecting YAML resolution > width/height > CLI defaults."""
+    if "resolution" in item:
+        return parse_resolution(item["resolution"])
+    return item.get("width", default_width), item.get("height", default_height)
 
 
 def upscale_image(image_path: str, replicate_api_key: str, target_width: int, target_height: int) -> None:
-    """Upscale image using Replicate Real-ESRGAN, then resize to target_width x target_height."""
-    import base64
+    """Upscale image via Replicate Real-ESRGAN, then resize to target_width x target_height with Pillow."""
+    client = replicate.Client(api_token=replicate_api_key)
 
     with open(image_path, "rb") as f:
-        image_b64 = base64.b64encode(f.read()).decode()
-    data_uri = f"data:image/png;base64,{image_b64}"
+        output = client.run(
+            "nightmareai/real-esrgan",
+            input={"image": f, "scale": 4, "face_enhance": False},
+        )
 
-    headers = {
-        "Authorization": f"Token {replicate_api_key}",
-        "Content-Type": "application/json",
-    }
-
-    resp = requests.post(
-        REPLICATE_REALESRGAN_URL,
-        headers=headers,
-        json={"input": {"image": data_uri, "scale": 4, "face_enhance": False}},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    prediction = resp.json()
-    poll_url = prediction["urls"]["get"]
-
-    for _ in range(72):  # max ~6 minutes polling every 5s
-        time.sleep(5)
-        poll = requests.get(poll_url, headers=headers, timeout=30)
-        poll.raise_for_status()
-        result = poll.json()
-        status = result.get("status")
-        if status == "succeeded":
-            output_url = result["output"]
-            break
-        if status in ("failed", "canceled"):
-            raise RuntimeError(f"Replicate upscaling {status}: {result.get('error')}")
-    else:
-        raise RuntimeError("Replicate upscaling timed out after 6 minutes")
-
-    img_resp = requests.get(output_url, timeout=120)
-    img_resp.raise_for_status()
-
-    img = Image.open(io.BytesIO(img_resp.content))
+    # output is a replicate.helpers.FileOutput; read its bytes
+    img = Image.open(io.BytesIO(output.read()))
     img = img.resize((target_width, target_height), Image.LANCZOS)
     img.save(image_path)
 
@@ -103,8 +86,8 @@ def run_generation(client, model_name, system_instruction, prompt, output_path, 
 @click.option("--aspect-ratio", "-a", default="16:9", show_default=True, help="Aspect ratio hint passed to the model, e.g. 16:9 or 9:16.")
 @click.option("--system-prompt-file", "-p", envvar="GEMINI_SYSTEM_PROMPT_FILE", type=click.Path(exists=True), help="Path to a text file that replaces the built-in system prompt.")
 @click.option("--upscale", is_flag=True, default=False, help="Upscale generated images via Replicate Real-ESRGAN.")
-@click.option("--width", type=int, default=1920, show_default=True, help="Target width in pixels after upscaling.")
-@click.option("--height", type=int, default=1080, show_default=True, help="Target height in pixels after upscaling.")
+@click.option("--width", type=int, default=1920, show_default=True, help="Default target width in pixels after upscaling.")
+@click.option("--height", type=int, default=1080, show_default=True, help="Default target height in pixels after upscaling.")
 @click.option("--replicate-api-key", envvar="REPLICATE_API_KEY", default=None, help="Replicate API key (required when --upscale is used).")
 def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, system_prompt_file,
          upscale, width, height, replicate_api_key):
@@ -127,8 +110,6 @@ def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, syst
 
     for i, item in enumerate(data.get("images", [])):
         current_ratio = item.get("aspect_ratio", aspect_ratio)
-        item_width = item.get("width", width)
-        item_height = item.get("height", height)
         filename = item.get("filename") or f"image_{i:03d}.png"
         final_output_path = os.path.join(output_dir, filename)
 
@@ -145,10 +126,11 @@ def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, syst
             total_cost += cost
 
             if upscale:
-                click.echo(" -> upscaling...", nl=False)
+                target_w, target_h = resolve_dimensions(item, width, height)
+                click.echo(f" -> upscaling to {target_w}x{target_h}...", nl=False)
                 try:
-                    upscale_image(final_output_path, replicate_api_key, item_width, item_height)
-                    click.secho(f" [{item_width}x{item_height}]", fg="magenta", nl=False)
+                    upscale_image(final_output_path, replicate_api_key, target_w, target_h)
+                    click.secho(" done", fg="magenta", nl=False)
                 except Exception as e:
                     click.secho(f" [upscale error: {e}]", fg="red", nl=False)
 
