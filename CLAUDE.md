@@ -28,6 +28,7 @@ Copy `examples/.env.example` to `.env` and fill in your API keys. The tools auto
 | `GEMINI_API_KEY` | `gemini-draw` | required |
 | `GEMINI_MODEL` | `gemini-draw` | override default model |
 | `GEMINI_SYSTEM_PROMPT_FILE` | `gemini-draw` | path to custom system prompt |
+| `REPLICATE_API_KEY` | `gemini-draw` | required when `--upscale` is used |
 | `OPENROUTER_API_KEY` | `or-draw` | required |
 | `OR_MODEL` | `or-draw` | override default model |
 | `OR_SYSTEM_PROMPT_FILE` | `or-draw` | path to custom system prompt |
@@ -83,6 +84,13 @@ justfile  — recipes: build, push, release, gemini-draw, or-draw
 - System prompt passed via `GenerateContentConfig.system_instruction`
 - Output resolution is fixed by the model (~1360×768 for most Gemini image models)
 - `--aspect-ratio` is a text hint to the model, not an API parameter
+- `--upscale` optionally upscales each generated image via **Replicate Real-ESRGAN** (`nightmareai/real-esrgan`):
+  1. Sends the PNG as a base64 data URI to the Replicate Predictions API (4× scale)
+  2. Polls until the prediction succeeds
+  3. Downloads the upscaled image and resizes it to `--width` × `--height` (default 1920×1080) using Pillow LANCZOS
+  4. Overwrites the original file in-place
+- Per-image `width` / `height` keys in YAML override the CLI defaults when upscaling
+- Requires `REPLICATE_API_KEY` in `.env` (or `--replicate-api-key` flag) when `--upscale` is active
 
 ### or-draw
 
