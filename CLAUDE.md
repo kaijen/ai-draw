@@ -5,9 +5,9 @@
 `ai-draw` is a Python package providing two CLI tools for scripted AI image generation:
 
 - **`gemini-draw`** — uses the Google Gemini API (`generate_content` with `response_modalities=["IMAGE","TEXT"]`)
-- **`or-draw`** — uses the OpenRouter `/images/generations` endpoint (FLUX, Stable Diffusion, etc.)
+- **`replicate-draw`** — uses the Replicate API (FLUX and other models)
 
-Both tools read a YAML file describing a batch of images and skip already-generated files (idempotent).
+All tools read a YAML file describing a batch of images and skip already-generated files (idempotent).
 
 ## Setup
 
@@ -17,7 +17,7 @@ Both tools read a YAML file describing a batch of images and skip already-genera
 pip install -e .
 ```
 
-This installs both CLI entry points (`gemini-draw`, `or-draw`) pointing at the source in `src/`.
+This installs all CLI entry points (`gemini-draw`, `replicate-draw`) pointing at the source in `src/`.
 
 ### Environment variables
 
@@ -28,22 +28,24 @@ Copy `examples/.env.example` to `.env` and fill in your API keys. The tools auto
 | `GEMINI_API_KEY` | `gemini-draw` | required |
 | `GEMINI_MODEL` | `gemini-draw` | override default model |
 | `GEMINI_SYSTEM_PROMPT_FILE` | `gemini-draw` | path to custom system prompt |
-| `OPENROUTER_API_KEY` | `or-draw` | required |
-| `OR_MODEL` | `or-draw` | override default model |
-| `OR_SYSTEM_PROMPT_FILE` | `or-draw` | path to custom system prompt |
+| `REPLICATE_API_TOKEN` | `replicate-draw` | required |
+| `REPLICATE_MODEL` | `replicate-draw` | override default model |
+| `REPLICATE_UPSCALER_MODEL` | `replicate-draw` | override default upscaler model |
+| `REPLICATE_SYSTEM_PROMPT_FILE` | `replicate-draw` | path to custom system prompt |
+| `REPLICATE_REFERENCE_IMAGES` | `replicate-draw` | comma-separated global reference image paths |
 
 ## Running the CLIs
 
 ```bash
-gemini-draw -f prompts.yaml -d output/
-or-draw     -f prompts.yaml -d output/
+gemini-draw    -f prompts.yaml -d output/
+replicate-draw -f prompts.yaml -d output/
 ```
 
 Full option reference:
 
 ```
 gemini-draw --help
-or-draw --help
+replicate-draw --help
 ```
 
 ## Project Layout
@@ -52,7 +54,7 @@ or-draw --help
 src/ai_draw/
   common.py       — SYSTEM_RULES, clean_multiline_string(), safe_makedirs()
   gemini.py       — Gemini backend + CLI entry point
-  openrouter.py   — OpenRouter backend + CLI entry point
+  replicate.py    — Replicate backend + CLI entry point
 docker/
   Dockerfile          — image build definition (context: project root)
   docker-compose.yml  — defines gemini-draw and or-draw services (uses ghcr.io image)
@@ -72,7 +74,10 @@ justfile  — recipes: build, push, release, gemini-draw, or-draw
 |---|---|---|
 | `GEMINI_MODEL` | `gemini.py` | Default Gemini model ID |
 | `PRICE_PER_IMAGE` | `gemini.py` | Flat per-image fee for cost estimate |
-| `OR_MODEL` | `openrouter.py` | Default OpenRouter model ID |
+| `REPLICATE_MODEL` | `replicate.py` | Default Replicate model ID |
+| `REPLICATE_UPSCALER_MODEL` | `replicate.py` | Default upscaler model ID |
+| `PRICE_PER_IMAGE` | `replicate.py` | Per-image generation cost estimate |
+| `PRICE_PER_UPSCALE` | `replicate.py` | Per-image upscale cost estimate |
 | `SYSTEM_RULES` | `common.py` | Shared drawing-style instructions |
 
 ## Backend Details
@@ -84,13 +89,16 @@ justfile  — recipes: build, push, release, gemini-draw, or-draw
 - Output resolution is fixed by the model (~1360×768 for most Gemini image models)
 - `--aspect-ratio` is a text hint to the model, not an API parameter
 
-### or-draw
+### replicate-draw
 
-- Uses `POST /api/v1/chat/completions` with `width`/`height` as extra body params
-- System prompt prepended to prompt text
-- `--width` / `--height` default to 1920×1080; passed directly in the payload
-- Per-image `width` / `height` keys in YAML override the CLI defaults
-- Optimized for FLUX models; other models may ignore width/height
+- Uses `replicate.Client.run()` with the model ID and `prompt`, `aspect_ratio`, `output_format` as inputs
+- System prompt prepended to the user prompt
+- Default model: `black-forest-labs/flux-2-pro`; optimized for FLUX models
+- `--aspect-ratio` is passed directly to the model (e.g. `16:9`, `9:16`, `1:1`)
+- **Upscaling pipeline**: when `--width` and/or `--height` are set and the generated image is smaller, an upscaler model is called automatically. Scale factor = `ceil(max(target_w/actual_w, target_h/actual_h))`. The upscaler receives `image` (file) and `scale` (integer) — compatible with `nightmareai/real-esrgan` and similar models.
+- Default upscaler: `nightmareai/real-esrgan`
+- **Reference images**: global defaults via `--reference-images` / `REPLICATE_REFERENCE_IMAGES` (comma-separated paths); per-image `reference_images` in YAML are merged (appended) on top. Passed as `input_images` to the model (requires model support, e.g. `flux-2-pro`)
+- Per-image `model`, `aspect_ratio`, `width`, `height`, `upscaler_model`, and `reference_images` keys in YAML extend/override CLI defaults
 
 ## Docker
 
@@ -105,8 +113,8 @@ just push
 just release
 
 # Run backends
-just gemini-draw -f prompts.yaml -d output/
-just or-draw     -f prompts.yaml -d output/
+just gemini-draw    -f prompts.yaml -d output/
+just replicate-draw -f prompts.yaml -d output/
 ```
 
 Paths are relative to the project root — no manual path translation needed.

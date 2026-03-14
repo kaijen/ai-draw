@@ -15,19 +15,44 @@ PRICE_PER_IMAGE = 0.003
 GEMINI_MODEL = "gemini-2.5-flash-preview-04-17"
 
 
-def run_generation(client, model_name, system_instruction, prompt, output_path, aspect_ratio="16:9", temp=0.3):
+def _image_part(path: str) -> types.Part:
+    with open(path, "rb") as f:
+        data = f.read()
+    mime = "image/png" if path.lower().endswith(".png") else "image/jpeg"
+    return types.Part.from_bytes(data=data, mime_type=mime)
+
+
+def run_generation(client, model_name, system_instruction, prompt, output_path,
+                   reference_images: list[str] | None = None,
+                   aspect_ratio: str = "16:9", temp: float = 0.3):
     if os.path.exists(output_path):
         click.secho(f"   Skipping: {os.path.basename(output_path)}", fg="yellow")
         return 0.0
 
     safe_makedirs(output_path)
 
+    contents: list = []
+    for ref_path in (reference_images or []):
+        if os.path.exists(ref_path):
+            contents.append(_image_part(ref_path))
+        else:
+            click.secho(f"   Warning: reference image not found: {ref_path}", fg="yellow")
+
+    # Embed hard constraints directly in the user turn so the model cannot ignore them
+    user_text = (
+        f"STRICT REQUIREMENTS — violating any of these invalidates the image:\n"
+        f"1. Output aspect ratio: {aspect_ratio} (exact, no cropping).\n"
+        f"2. ABSOLUTELY NO text, letters, digits, symbols, or writing of any kind in the image.\n\n"
+        f"Subject: {clean_multiline_string(prompt)}"
+    )
+    contents.append(user_text)
+
     try:
         response = client.models.generate_content(
             model=model_name,
-            contents=clean_multiline_string(prompt),
+            contents=contents,
             config=types.GenerateContentConfig(
-                system_instruction=clean_multiline_string(system_instruction),
+                system_instruction=system_instruction,  # preserve newlines for readability
                 temperature=temp,
                 response_modalities=["IMAGE", "TEXT"],
             ),
@@ -50,20 +75,22 @@ def run_generation(client, model_name, system_instruction, prompt, output_path, 
 @click.option("--global-temp", "-t", type=float, default=0.3, show_default=True, help="Default generation temperature.")
 @click.option("--model", "-m", envvar="GEMINI_MODEL", default=GEMINI_MODEL, show_default=True, help="Gemini model name.")
 @click.option("--aspect-ratio", "-a", default="16:9", show_default=True, help="Aspect ratio hint passed to the model, e.g. 16:9 or 9:16.")
+@click.option("--reference-images", "-R", multiple=True, type=click.Path(exists=True), help="Global reference images for style consistency (repeatable).")
 @click.option("--system-prompt-file", "-p", envvar="GEMINI_SYSTEM_PROMPT_FILE", type=click.Path(exists=True), help="Path to a text file that replaces the built-in system prompt.")
-def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, system_prompt_file):
+def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, reference_images, system_prompt_file):
     """Generate images using the Gemini API from a YAML prompt file."""
     if system_prompt_file:
         with open(system_prompt_file, "r", encoding="utf-8") as f:
-            system_instruction = clean_multiline_string(f.read())
+            system_instruction = f.read().strip()
     else:
-        system_instruction = clean_multiline_string(SYSTEM_RULES)
+        system_instruction = SYSTEM_RULES.strip()
 
     client = genai.Client(api_key=api_key)
 
     with open(input_yaml, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
+    yaml_dir = os.path.dirname(os.path.abspath(input_yaml))
     total_cost = 0.0
 
     for i, item in enumerate(data.get("images", [])):
@@ -71,11 +98,17 @@ def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, syst
         filename = item.get("filename") or f"image_{i:03d}.png"
         final_output_path = os.path.join(output_dir, filename)
 
-        click.echo(f"({i+1}) -> {os.path.basename(final_output_path)}", nl=False)
+        local_refs = [os.path.join(yaml_dir, r) for r in item.get("reference_images", [])]
+        all_refs = list(reference_images) + local_refs
+
+        click.echo(
+            f"({i+1}) refs={len(all_refs)} -> {os.path.basename(final_output_path)}",
+            nl=False,
+        )
 
         cost = run_generation(
             client, model, system_instruction, item.get("prompt"),
-            final_output_path, current_ratio,
+            final_output_path, all_refs, current_ratio,
             item.get("temperature", global_temp),
         )
 

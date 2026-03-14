@@ -3,19 +3,24 @@
 # Keys per image entry:
 #   filename        – output path relative to --output-dir
 #   prompt          – text string or path to a .txt file (relative to this YAML file)
-#   temperature     – optional, overrides --global-temp (default: 0.3)
 #   aspect_ratio    – optional, default "16:9"
-#   resolution      – optional, default "1920x1080" (gemini-draw only)
-#   model           – optional, model ID (or-draw only)
-#   reference_images – optional list of reference images relative to this YAML file
-#                      (gemini-draw only; overrides --global-ref for this image)
+#   model           – optional, overrides --model for this image
+#
+# gemini-draw only:
+#   temperature       – optional, overrides --global-temp (default: 0.3)
+#   reference_images  – optional list of reference images relative to this YAML file
+#                       (overrides --reference-images for this image)
+#
+# replicate-draw only:
+#   width           – optional, target width in pixels; triggers upscaling if image is smaller
+#   height          – optional, target height in pixels; triggers upscaling if image is smaller
+#   upscaler_model  – optional, overrides --upscaler-model for this image
 
 images:
   - filename: "gemini/start.png"
     prompt: "Strichmännchen steht am Anfang eines Pfades."
     temperature: 0.1
     aspect_ratio: "16:9"
-    resolution: "1920x1080"
 
   - filename: "gemini/detail.png"
     prompt: "Nahaufnahme des Strichmännchens mit rotem Schal."
@@ -23,6 +28,9 @@ images:
       - "ref/style.png"
       - "ref/pose.png"
 
-  - filename: "or/action.png"
-    model: "black-forest-labs/flux-1-pro"   # or-draw only
+  - filename: "replicate/action.png"
+    model: "black-forest-labs/flux-2-pro"
     prompt: "descriptions/scene_2.txt"
+    aspect_ratio: "16:9"
+    width: 1920
+    height: 1080

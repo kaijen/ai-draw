@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ai-draw"
 dynamic = ["version"]
-description = "CLI tools for batch AI image generation via Gemini and OpenRouter"
+description = "CLI tool for batch AI image generation via Gemini"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,13 +13,13 @@ dependencies = [
     "pyyaml>=6.0",
     "Pillow>=10.0",
     "google-genai>=1.7",
-    "requests>=2.31",
+    "replicate>=1.0",
     "python-dotenv>=1.0",
 ]
 
 [project.scripts]
 gemini-draw = "ai_draw.gemini:main"
-or-draw = "ai_draw.openrouter:main"
+replicate-draw = "ai_draw.replicate:main"
 
 [tool.hatch.version]
 source = "vcs"
