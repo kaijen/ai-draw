@@ -4,9 +4,6 @@
 # Generated images
 output/
 
-# Local workspace (experiments, not committed)
-workspace/
-
 # Python
 __pycache__/
 *.py[cod]

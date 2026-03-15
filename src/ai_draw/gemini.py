@@ -8,7 +8,10 @@ import yaml
 from google import genai
 from google.genai import types
 
-from ai_draw.common import SYSTEM_RULES, clean_multiline_string, safe_makedirs
+from ai_draw.common import (
+    SYSTEM_RULES, REPLICATE_UPSCALER_MODEL,
+    clean_multiline_string, safe_makedirs, run_upscale,
+)
 
 PRICE_PER_IMAGE = 0.003
 
@@ -24,7 +27,8 @@ def _image_part(path: str) -> types.Part:
 
 def run_generation(client, model_name, system_instruction, prompt, output_path,
                    reference_images: list[str] | None = None,
-                   aspect_ratio: str = "16:9", temp: float = 0.3):
+                   aspect_ratio: str = "16:9", temp: float = 0.3,
+                   allow_text: bool = False):
     if os.path.exists(output_path):
         click.secho(f"   Skipping: {os.path.basename(output_path)}", fg="yellow")
         return 0.0
@@ -39,10 +43,15 @@ def run_generation(client, model_name, system_instruction, prompt, output_path,
             click.secho(f"   Warning: reference image not found: {ref_path}", fg="yellow")
 
     # Embed hard constraints directly in the user turn so the model cannot ignore them
+    text_rule = (
+        "2. Symbols, mathematical operators, and labels ARE allowed and required as described."
+        if allow_text else
+        "2. ABSOLUTELY NO text, letters, digits, symbols, or writing of any kind in the image."
+    )
     user_text = (
         f"STRICT REQUIREMENTS — violating any of these invalidates the image:\n"
         f"1. Output aspect ratio: {aspect_ratio} (exact, no cropping).\n"
-        f"2. ABSOLUTELY NO text, letters, digits, symbols, or writing of any kind in the image.\n\n"
+        f"{text_rule}\n\n"
         f"Subject: {clean_multiline_string(prompt)}"
     )
     contents.append(user_text)
@@ -75,9 +84,14 @@ def run_generation(client, model_name, system_instruction, prompt, output_path,
 @click.option("--global-temp", "-t", type=float, default=0.3, show_default=True, help="Default generation temperature.")
 @click.option("--model", "-m", envvar="GEMINI_MODEL", default=GEMINI_MODEL, show_default=True, help="Gemini model name.")
 @click.option("--aspect-ratio", "-a", default="16:9", show_default=True, help="Aspect ratio hint passed to the model, e.g. 16:9 or 9:16.")
+@click.option("--width", "-W", type=int, default=None, help="Target width in pixels. Triggers upscaling via Replicate if the generated image is smaller.")
+@click.option("--height", "-H", type=int, default=None, help="Target height in pixels. Triggers upscaling via Replicate if the generated image is smaller.")
+@click.option("--upscaler-model", "-u", envvar="REPLICATE_UPSCALER_MODEL", default=REPLICATE_UPSCALER_MODEL, show_default=True, help="Replicate upscaler model ID.")
+@click.option("--upscaler-token", envvar="REPLICATE_API_TOKEN", default=None, help="Replicate API token for upscaling. Falls back to REPLICATE_API_TOKEN env var.")
 @click.option("--reference-images", "-R", multiple=True, type=click.Path(exists=True), help="Global reference images for style consistency (repeatable).")
 @click.option("--system-prompt-file", "-p", envvar="GEMINI_SYSTEM_PROMPT_FILE", type=click.Path(exists=True), help="Path to a text file that replaces the built-in system prompt.")
-def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, reference_images, system_prompt_file):
+def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio,
+         width, height, upscaler_model, upscaler_token, reference_images, system_prompt_file):
     """Generate images using the Gemini API from a YAML prompt file."""
     if system_prompt_file:
         with open(system_prompt_file, "r", encoding="utf-8") as f:
@@ -95,6 +109,9 @@ def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, refe
 
     for i, item in enumerate(data.get("images", [])):
         current_ratio = item.get("aspect_ratio", aspect_ratio)
+        current_width = item.get("width", width)
+        current_height = item.get("height", height)
+        current_upscaler = item.get("upscaler_model", upscaler_model)
         filename = item.get("filename") or f"image_{i:03d}.png"
         final_output_path = os.path.join(output_dir, filename)
 
@@ -110,13 +127,23 @@ def main(api_key, input_yaml, output_dir, global_temp, model, aspect_ratio, refe
             client, model, system_instruction, item.get("prompt"),
             final_output_path, all_refs, current_ratio,
             item.get("temperature", global_temp),
+            item.get("allow_text", False),
         )
 
         if cost > 0:
-            click.secho(f" [~{cost:.4f}$]", fg="cyan")
+            click.secho(f" [~{cost:.4f}$]", fg="cyan", nl=False)
             total_cost += cost
-        else:
-            click.echo("")
+
+            if upscaler_token and current_upscaler and (current_width or current_height):
+                upscale_cost = run_upscale(
+                    upscaler_token, current_upscaler, final_output_path,
+                    current_width, current_height,
+                )
+                total_cost += upscale_cost
+                if upscale_cost > 0:
+                    click.secho(f" [+~{upscale_cost:.3f}$]", fg="cyan", nl=False)
+
+        click.echo("")
 
     click.echo("-" * 40)
     click.secho(f"Estimated total cost: {total_cost:.4f}$", fg="green", bold=True)

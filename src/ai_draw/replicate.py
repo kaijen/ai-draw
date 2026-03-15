@@ -1,4 +1,3 @@
-import math
 import os
 import urllib.request
 
@@ -7,16 +6,16 @@ load_dotenv(find_dotenv(usecwd=True))
 
 import click
 import yaml
-from PIL import Image
 import replicate as replicate_lib
 
-from ai_draw.common import SYSTEM_RULES, clean_multiline_string, safe_makedirs
+from ai_draw.common import (
+    SYSTEM_RULES, REPLICATE_UPSCALER_MODEL, PRICE_PER_UPSCALE,
+    clean_multiline_string, safe_makedirs, run_upscale,
+)
 
 REPLICATE_MODEL = "black-forest-labs/flux-2-pro"
-REPLICATE_UPSCALER_MODEL = "nightmareai/real-esrgan"
 
 PRICE_PER_IMAGE = 0.055
-PRICE_PER_UPSCALE = 0.010
 
 
 def _read_file_output(file_output) -> bytes:
@@ -30,7 +29,9 @@ def _read_file_output(file_output) -> bytes:
 def run_generation(client, model_id, system_prompt, prompt, output_path,
                    aspect_ratio: str = "16:9",
                    width: int | None = None, height: int | None = None,
-                   reference_images: list[str] | None = None) -> float:
+                   reference_images: list[str] | None = None,
+                   guidance_scale: float | None = None,
+                   negative_prompt: str | None = None) -> float:
     """Generate one image. Returns cost, or 0.0 on skip/error."""
     if os.path.exists(output_path):
         click.secho(f"   Skipping: {os.path.basename(output_path)}", fg="yellow")
@@ -55,7 +56,14 @@ def run_generation(client, model_id, system_prompt, prompt, output_path,
         if height:
             api_input["height"] = height
     if reference_images:
-        api_input["input_images"] = [open(p, "rb") for p in reference_images]
+        # input_images: Flux-compatible; reference_images: SeedDream-compatible
+        image_handles = [open(p, "rb") for p in reference_images]
+        api_input["input_images"] = image_handles
+        api_input["reference_images"] = image_handles
+    if guidance_scale is not None:
+        api_input["guidance_scale"] = guidance_scale
+    if negative_prompt:
+        api_input["negative_prompt"] = negative_prompt
 
     try:
         output = client.run(
@@ -71,46 +79,6 @@ def run_generation(client, model_id, system_prompt, prompt, output_path,
         return 0.0
 
 
-def run_upscale(client, upscaler_model, image_path,
-                target_width: int | None, target_height: int | None) -> float:
-    """Upscale image_path in-place if it is smaller than target dimensions.
-
-    Scale factor is computed as ceil(max(target_w/actual_w, target_h/actual_h)).
-    Returns cost, or 0.0 when no upscaling was needed or on error.
-    """
-    with Image.open(image_path) as img:
-        actual_w, actual_h = img.size
-
-    needs_upscale = (
-        (target_width and actual_w < target_width) or
-        (target_height and actual_h < target_height)
-    )
-    if not needs_upscale:
-        return 0.0
-
-    scale_x = math.ceil(target_width / actual_w) if target_width else 1
-    scale_y = math.ceil(target_height / actual_h) if target_height else 1
-    scale_factor = max(scale_x, scale_y)
-
-    click.echo(
-        f"\n   Upscaling {actual_w}x{actual_h} -> ~{actual_w*scale_factor}x{actual_h*scale_factor}"
-        f" (scale={scale_factor}, model={upscaler_model})",
-        nl=False,
-    )
-
-    try:
-        output = client.run(
-            upscaler_model,
-            input={"image": open(image_path, "rb"), "scale": scale_factor},
-        )
-        file_output = output[0] if isinstance(output, list) else output
-        with open(image_path, "wb") as f:
-            f.write(_read_file_output(file_output))
-        return PRICE_PER_UPSCALE
-    except Exception as e:
-        click.secho(f"\n   Error upscaling: {e}", fg="red")
-        return 0.0
-
 
 @click.command()
 @click.option("--api-key", envvar="REPLICATE_API_TOKEN", required=True, help="Replicate API token.")
@@ -122,9 +90,11 @@ def run_upscale(client, upscaler_model, image_path,
 @click.option("--height", "-H", type=int, default=None, help="Target height in pixels. Triggers upscaling if the generated image is smaller.")
 @click.option("--upscaler-model", "-u", envvar="REPLICATE_UPSCALER_MODEL", default=REPLICATE_UPSCALER_MODEL, show_default=True, help="Replicate upscaler model ID. Used when --width/--height are set.")
 @click.option("--reference-images", "-R", multiple=True, type=str, envvar="REPLICATE_REFERENCE_IMAGES", help="Global reference images for style consistency (repeatable; env var: comma-separated paths).")
+@click.option("--guidance-scale", "-g", type=float, default=None, envvar="REPLICATE_GUIDANCE_SCALE", help="Guidance scale (prompt adherence). Supported by SeedDream and similar models.")
+@click.option("--negative-prompt", "-n", type=str, default=None, envvar="REPLICATE_NEGATIVE_PROMPT", help="Negative prompt (what to exclude). Supported by SeedDream and similar models.")
 @click.option("--system-prompt-file", "-p", envvar="REPLICATE_SYSTEM_PROMPT_FILE", type=click.Path(exists=True), help="Path to a text file that replaces the built-in system prompt.")
 def main(api_key, input_yaml, output_dir, model, aspect_ratio, width, height,
-         upscaler_model, reference_images, system_prompt_file):
+         upscaler_model, reference_images, guidance_scale, negative_prompt, system_prompt_file):
     """Generate images using the Replicate API from a YAML prompt file."""
     # Env var delivers a single comma-separated string; split it into individual paths.
     if len(reference_images) == 1 and "," in reference_images[0]:
@@ -151,6 +121,8 @@ def main(api_key, input_yaml, output_dir, model, aspect_ratio, width, height,
         current_width = item.get("width", width)
         current_height = item.get("height", height)
         current_upscaler = item.get("upscaler_model", upscaler_model)
+        current_guidance = item.get("guidance_scale", guidance_scale)
+        current_negative = item.get("negative_prompt", negative_prompt)
         filename = item.get("filename") or f"image_{i:03d}.png"
         final_output_path = os.path.join(output_dir, filename)
 
@@ -166,6 +138,7 @@ def main(api_key, input_yaml, output_dir, model, aspect_ratio, width, height,
             client, current_model, system_prompt,
             item.get("prompt"), final_output_path, current_ratio,
             current_width, current_height, all_refs,
+            current_guidance, current_negative,
         )
         total_cost += gen_cost
 
@@ -174,7 +147,7 @@ def main(api_key, input_yaml, output_dir, model, aspect_ratio, width, height,
 
             if current_upscaler and (current_width or current_height):
                 upscale_cost = run_upscale(
-                    client, current_upscaler, final_output_path,
+                    api_key, current_upscaler, final_output_path,
                     current_width, current_height,
                 )
                 total_cost += upscale_cost

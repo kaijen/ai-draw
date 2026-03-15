@@ -28,11 +28,13 @@ Copy `examples/.env.example` to `.env` and fill in your API keys. The tools auto
 | `GEMINI_API_KEY` | `gemini-draw` | required |
 | `GEMINI_MODEL` | `gemini-draw` | override default model |
 | `GEMINI_SYSTEM_PROMPT_FILE` | `gemini-draw` | path to custom system prompt |
-| `REPLICATE_API_TOKEN` | `replicate-draw` | required |
+| `REPLICATE_API_TOKEN` | `replicate-draw`, `gemini-draw` (upscaler) | required |
 | `REPLICATE_MODEL` | `replicate-draw` | override default model |
-| `REPLICATE_UPSCALER_MODEL` | `replicate-draw` | override default upscaler model |
+| `REPLICATE_UPSCALER_MODEL` | both | override default upscaler model |
 | `REPLICATE_SYSTEM_PROMPT_FILE` | `replicate-draw` | path to custom system prompt |
 | `REPLICATE_REFERENCE_IMAGES` | `replicate-draw` | comma-separated global reference image paths |
+| `REPLICATE_GUIDANCE_SCALE` | `replicate-draw` | default guidance scale |
+| `REPLICATE_NEGATIVE_PROMPT` | `replicate-draw` | default negative prompt |
 
 ## Running the CLIs
 
@@ -75,9 +77,9 @@ justfile  — recipes: build, push, release, gemini-draw, or-draw
 | `GEMINI_MODEL` | `gemini.py` | Default Gemini model ID |
 | `PRICE_PER_IMAGE` | `gemini.py` | Flat per-image fee for cost estimate |
 | `REPLICATE_MODEL` | `replicate.py` | Default Replicate model ID |
-| `REPLICATE_UPSCALER_MODEL` | `replicate.py` | Default upscaler model ID |
+| `REPLICATE_UPSCALER_MODEL` | `common.py` | Default upscaler model ID (shared) |
 | `PRICE_PER_IMAGE` | `replicate.py` | Per-image generation cost estimate |
-| `PRICE_PER_UPSCALE` | `replicate.py` | Per-image upscale cost estimate |
+| `PRICE_PER_UPSCALE` | `common.py` | Per-image upscale cost estimate (shared) |
 | `SYSTEM_RULES` | `common.py` | Shared drawing-style instructions |
 
 ## Backend Details
@@ -88,6 +90,9 @@ justfile  — recipes: build, push, release, gemini-draw, or-draw
 - System prompt passed via `GenerateContentConfig.system_instruction`
 - Output resolution is fixed by the model (~1360×768 for most Gemini image models)
 - `--aspect-ratio` is a text hint to the model, not an API parameter
+- **Upscaling pipeline**: same as replicate-draw; requires `REPLICATE_API_TOKEN` in env
+- **`allow_text`**: per-image YAML key; when `true`, replaces the hardcoded "no text/symbols" constraint with an explicit allowance — use for images that require mathematical symbols or labels
+- Per-image `aspect_ratio`, `width`, `height`, `upscaler_model`, `reference_images`, `temperature`, and `allow_text` keys in YAML extend/override CLI defaults
 
 ### replicate-draw
 
@@ -95,10 +100,12 @@ justfile  — recipes: build, push, release, gemini-draw, or-draw
 - System prompt prepended to the user prompt
 - Default model: `black-forest-labs/flux-2-pro`; optimized for FLUX models
 - `--aspect-ratio` is passed directly to the model (e.g. `16:9`, `9:16`, `1:1`)
-- **Upscaling pipeline**: when `--width` and/or `--height` are set and the generated image is smaller, an upscaler model is called automatically. Scale factor = `ceil(max(target_w/actual_w, target_h/actual_h))`. The upscaler receives `image` (file) and `scale` (integer) — compatible with `nightmareai/real-esrgan` and similar models.
+- **Upscaling pipeline**: when `--width` and/or `--height` are set and the generated image is smaller, an upscaler model is called automatically. Scale factor = `ceil(max(target_w/actual_w, target_h/actual_h))`. The upscaler receives `image` (file) and `scale` (integer) — compatible with `nightmareai/real-esrgan` and similar models. Implemented in `common.py` (`run_upscale`), shared with `gemini-draw`.
 - Default upscaler: `nightmareai/real-esrgan`
-- **Reference images**: global defaults via `--reference-images` / `REPLICATE_REFERENCE_IMAGES` (comma-separated paths); per-image `reference_images` in YAML are merged (appended) on top. Passed as `input_images` to the model (requires model support, e.g. `flux-2-pro`)
-- Per-image `model`, `aspect_ratio`, `width`, `height`, `upscaler_model`, and `reference_images` keys in YAML extend/override CLI defaults
+- **Reference images**: global defaults via `--reference-images` / `REPLICATE_REFERENCE_IMAGES` (comma-separated paths); per-image `reference_images` in YAML are merged (appended) on top. Passed as both `input_images` (Flux) and `reference_images` (SeedDream) to maximise model compatibility.
+- **`guidance_scale`**: per-image or CLI (`-g`); supported by SeedDream and similar models (range 1–10)
+- **`negative_prompt`**: per-image or CLI (`-n`); supported by SeedDream and similar models
+- Per-image `model`, `aspect_ratio`, `width`, `height`, `upscaler_model`, `reference_images`, `guidance_scale`, and `negative_prompt` keys in YAML extend/override CLI defaults
 
 ## Docker
 
