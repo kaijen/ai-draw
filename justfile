@@ -12,7 +12,7 @@ login:
 
 # Build Docker image locally
 build:
-    {{compose}} build
+    VERSION={{tag}} {{compose}} build
 
 # Push :latest to ghcr.io
 push: build

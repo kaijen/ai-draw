@@ -4,6 +4,8 @@
 # Generated images
 output/
 
+workspace/
+
 # Python
 __pycache__/
 *.py[cod]
