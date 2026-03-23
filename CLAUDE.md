@@ -28,6 +28,7 @@ Copy `examples/.env.example` to `.env` and fill in your API keys. The tools auto
 | `GEMINI_API_KEY` | `gemini-draw` | required |
 | `GEMINI_MODEL` | `gemini-draw` | override default model |
 | `GEMINI_SYSTEM_PROMPT_FILE` | `gemini-draw` | path to custom system prompt |
+| `GEMINI_REFERENCE_IMAGES` | `gemini-draw` | comma-separated global reference image paths |
 | `REPLICATE_API_TOKEN` | `replicate-draw`, `gemini-draw` (upscaler) | required |
 | `REPLICATE_MODEL` | `replicate-draw` | override default model |
 | `REPLICATE_UPSCALER_MODEL` | both | override default upscaler model |
