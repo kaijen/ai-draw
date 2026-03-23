@@ -51,10 +51,25 @@ Replicate ist pay-as-you-go ohne monatliches Abo.
 
 ### pip (local development)
 
+Requires Python ≥ 3.11. Use [pyenv](https://github.com/pyenv/pyenv) to manage versions:
+
+```bash
+pyenv install 3.13.12      # install a specific Python version
+pyenv virtualenv 3.13.12 ai-draw   # create a named virtualenv
+pyenv local ai-draw        # auto-activate when entering the project dir
+```
+
+Or use a plain venv:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+```
+
+Then install the package:
+
 ```bash
 git clone https://github.com/kaijen/ai-draw.git
 cd ai-draw
-python -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
@@ -98,8 +113,13 @@ replicate-draw -f prompts.yaml -d output/ --width 1920 --height 1080
 | `--global-temp` | `-t` | `0.3` | | Default generation temperature |
 | `--model` | `-m` | `gemini-2.5-flash-preview-04-17` | `GEMINI_MODEL` | Model name |
 | `--aspect-ratio` | `-a` | `16:9` | | Aspect ratio hint (text prompt) |
-| `--reference-images` | `-R` | | | Global reference images for style (repeatable) |
+| `--width` | `-W` | | | Target width in pixels — triggers upscaling if image is smaller |
+| `--height` | `-H` | | | Target height in pixels — triggers upscaling if image is smaller |
+| `--upscaler-model` | `-u` | `nightmareai/real-esrgan` | `REPLICATE_UPSCALER_MODEL` | Upscaler model ID |
+| `--upscaler-token` | | | `REPLICATE_API_TOKEN` | Replicate API token for upscaling |
+| `--reference-images` | `-R` | | `GEMINI_REFERENCE_IMAGES` | Global reference images for style (repeatable) |
 | `--system-prompt-file` | `-p` | | `GEMINI_SYSTEM_PROMPT_FILE` | Custom system prompt file |
+| `--debug` | | `false` | | Print raw API request and response |
 
 ### replicate-draw
 
@@ -125,6 +145,7 @@ images:
 
     # gemini-draw options
     temperature: 0.2                  # optional, overrides --global-temp
+    allow_text: false                 # optional; true = permit text/symbols in image
     reference_images:                 # optional, paths relative to the YAML file
       - "ref/style.png"
 

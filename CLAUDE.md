@@ -11,6 +11,30 @@ All tools read a YAML file describing a batch of images and skip already-generat
 
 ## Setup
 
+### Python version
+
+The project requires Python ≥ 3.11. Use [pyenv](https://github.com/pyenv/pyenv) to manage versions:
+
+```bash
+pyenv install 3.13.12      # install a specific version
+pyenv local 3.13.12        # write .python-version (project-local pin)
+```
+
+### pyenv virtualenv
+
+Create an isolated virtualenv with [pyenv-virtualenv](https://github.com/pyenv/pyenv-virtualenv):
+
+```bash
+pyenv virtualenv 3.13.12 ai-draw
+pyenv local ai-draw        # auto-activates when entering the project directory
+```
+
+Or use a plain venv inside the project:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+```
+
 ### Install for development
 
 ```bash
@@ -91,7 +115,11 @@ justfile  — recipes: build, push, release, gemini-draw, or-draw
 - System prompt passed via `GenerateContentConfig.system_instruction`
 - Output resolution is fixed by the model (~1360×768 for most Gemini image models)
 - `--aspect-ratio` is a text hint to the model, not an API parameter
-- **Upscaling pipeline**: same as replicate-draw; requires `REPLICATE_API_TOKEN` in env
+- **Upscaling pipeline**: same as replicate-draw; requires `REPLICATE_API_TOKEN` / `--upscaler-token` in env
+- **`--width` / `--height`**: trigger upscaling via Replicate when the generated image is smaller than the target
+- **`--upscaler-model`** (`-u`): Replicate upscaler model ID (env: `REPLICATE_UPSCALER_MODEL`)
+- **`--upscaler-token`**: Replicate API token for upscaling (env: `REPLICATE_API_TOKEN`)
+- **`--debug`**: print raw API request and response (binary blobs truncated)
 - **`allow_text`**: per-image YAML key; when `true`, replaces the hardcoded "no text/symbols" constraint with an explicit allowance — use for images that require mathematical symbols or labels
 - Per-image `aspect_ratio`, `width`, `height`, `upscaler_model`, `reference_images`, `temperature`, and `allow_text` keys in YAML extend/override CLI defaults
 
